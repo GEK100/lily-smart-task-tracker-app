@@ -4,6 +4,7 @@ import DayView from './components/DayView';
 import TaskForm from './components/TaskForm';
 import ProgressBar from './components/ProgressBar';
 import CategoryManager from './components/CategoryManager';
+import NotificationPrompt from './components/NotificationPrompt';
 import {
   initDB,
   addTask,
@@ -20,6 +21,7 @@ import {
   requestNotificationPermission,
   scheduleTaskNotifications,
   isNotificationSupported,
+  getNotificationPermission,
 } from './utils/notifications';
 import { vibrateLight, vibrateDelete } from './utils/vibration';
 
@@ -29,6 +31,7 @@ function App() {
   const [categories, setCategories] = useState([]);
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [notificationSchedules, setNotificationSchedules] = useState([]);
@@ -63,20 +66,32 @@ function App() {
   // Schedule notifications when tasks change
   useEffect(() => {
     if (tasks.length > 0) {
-      const schedules = scheduleTaskNotifications(tasks);
+      const schedules = scheduleTaskNotifications(tasks, currentDate);
       setNotificationSchedules(schedules);
     }
-  }, [tasks]);
+  }, [tasks, currentDate]);
+
+  // Check notification permission on first load
+  useEffect(() => {
+    const checkNotificationPermission = async () => {
+      const hasAskedBefore = await getSetting('notificationPromptShown');
+      if (!hasAskedBefore && isNotificationSupported()) {
+        const permission = getNotificationPermission();
+        if (permission === 'default') {
+          // Show prompt after a short delay to let app load
+          setTimeout(() => {
+            setShowNotificationPrompt(true);
+          }, 2000);
+        }
+      }
+    };
+    checkNotificationPermission();
+  }, []);
 
   const initializeApp = async () => {
     await initDB();
     await loadCategories();
     await loadTasks();
-
-    // Request notification permission
-    if (isNotificationSupported()) {
-      await requestNotificationPermission();
-    }
   };
 
   const loadCategories = async () => {
@@ -147,6 +162,24 @@ function App() {
     } else {
       document.documentElement.classList.remove('dark');
     }
+  };
+
+  const handleEnableNotifications = async () => {
+    const granted = await requestNotificationPermission();
+    await setSetting('notificationPromptShown', true);
+    setShowNotificationPrompt(false);
+    if (granted) {
+      // Re-schedule notifications for current tasks
+      if (tasks.length > 0) {
+        const schedules = scheduleTaskNotifications(tasks, currentDate);
+        setNotificationSchedules(schedules);
+      }
+    }
+  };
+
+  const handleSkipNotifications = async () => {
+    await setSetting('notificationPromptShown', true);
+    setShowNotificationPrompt(false);
   };
 
   return (
@@ -228,6 +261,13 @@ function App() {
           categories={categories}
           onAddCategory={handleAddCategory}
           onClose={() => setShowCategoryManager(false)}
+        />
+      )}
+
+      {showNotificationPrompt && (
+        <NotificationPrompt
+          onEnable={handleEnableNotifications}
+          onSkip={handleSkipNotifications}
         />
       )}
     </div>

@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDrag } from 'react-dnd';
 import { vibrateMedium, vibrateComplete } from '../utils/vibration';
 
 const TaskCard = ({ task, category, onEdit, onDelete, onToggleComplete }) => {
+  const [showRedFlag, setShowRedFlag] = useState(false);
+
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'task',
     item: { task },
@@ -15,6 +17,32 @@ const TaskCard = ({ task, category, onEdit, onDelete, onToggleComplete }) => {
       }
     },
   }));
+
+  // Check if notification time is approaching
+  useEffect(() => {
+    if (!task.reminderEnabled || !task.startTime || !task.date) {
+      setShowRedFlag(false);
+      return;
+    }
+
+    const checkNotificationTime = () => {
+      const now = new Date();
+      const [hours, minutes] = task.startTime.split(':').map(Number);
+      const taskDateTime = new Date(task.date);
+      taskDateTime.setHours(hours, minutes, 0, 0);
+
+      const reminderMinutes = task.reminderMinutes || 5;
+      const notificationTime = new Date(taskDateTime.getTime() - reminderMinutes * 60000);
+
+      // Show red flag if we're within the notification window (from reminder time to task time)
+      setShowRedFlag(now >= notificationTime && now < taskDateTime);
+    };
+
+    checkNotificationTime();
+    const interval = setInterval(checkNotificationTime, 30000); // Check every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [task.reminderEnabled, task.startTime, task.date, task.reminderMinutes]);
 
   const handleToggleComplete = () => {
     vibrateComplete();
@@ -74,6 +102,11 @@ const TaskCard = ({ task, category, onEdit, onDelete, onToggleComplete }) => {
               >
                 {task.title}
               </h3>
+              {showRedFlag && !task.completed && (
+                <span className="text-xl animate-bounce-gentle" title="Notification time!">
+                  🚩
+                </span>
+              )}
             </div>
             {task.description && (
               <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
@@ -84,6 +117,11 @@ const TaskCard = ({ task, category, onEdit, onDelete, onToggleComplete }) => {
               <span>⏰ {task.startTime}</span>
               <span>⏱️ {duration} min</span>
               {task.reminderEnabled && <span>🔔</span>}
+              {showRedFlag && !task.completed && (
+                <span className="text-red-600 dark:text-red-400 font-semibold animate-pulse">
+                  DUE SOON!
+                </span>
+              )}
             </div>
           </div>
         </div>
